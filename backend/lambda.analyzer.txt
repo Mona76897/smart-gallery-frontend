@@ -1,0 +1,61 @@
+1.IMAGE ANALYZER PROCESSOR:
+import { RekognitionClient, DetectLabelsCommand } from "@aws-sdk/client-rekognition";
+import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
+import sharp from "sharp"; 
+
+const rekogClient = new RekognitionClient({ region: "eu-west-1" });
+const s3Client = new S3Client({ region: "eu-north-1" });
+const ddbClient = new DynamoDBClient({ region: "eu-north-1" });
+
+export const handler = async (event) => {
+    const bucket = event.Records[0].s3.bucket.name;
+    const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
+    // MAKE SURE THIS MATCHES YOUR BUCKET NAME EXACTLY
+    const resizedBucket = "smart-gallery-resized"; 
+
+    try {
+        // 1. Get the original image from S3
+        const s3Response = await s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+        const buffer = Buffer.from(await s3Response.Body.transformToByteArray());
+
+        // 2. Generate a 200x200 Thumbnail
+        const thumbnail = await sharp(buffer)
+            .resize(200, 200, { fit: 'inside' })
+            .toBuffer();
+
+        // 3. Upload the thumbnail to the second bucket
+        await s3Client.send(new PutObjectCommand({
+            Bucket: resizedBucket,
+            Key: `thumb-${key}`,
+            Body: thumbnail,
+            ContentType: "image/jpeg"
+        }));
+
+        // 4. Get AI Labels (using the same buffer)
+        const rekogResponse = await rekogClient.send(new DetectLabelsCommand({
+            Image: { Bytes: buffer },
+            MaxLabels: 5
+        }));
+        const labels = rekogResponse.Labels.map(l => l.Name).join(", ");
+
+        // 5. Save everything to DynamoDB
+        await ddbClient.send(new PutItemCommand({
+            TableName: "SmartGalleryMetadata",
+            Item: {
+                imageid: { S: key }, // Changed to all lowercase to match your screenshot
+                labels: { S: labels },
+                thumbnailKey: { S: `thumb-${key}` },
+                uploadDate: { S: new Date().toISOString() },
+                originalPath: { S: `https://${bucket}.s3.eu-north-1.amazonaws.com/${key}` }
+            }
+        }));
+
+        console.log(`Successfully processed, resized, and indexed: ${key}`);
+        return { statusCode: 200 };
+        
+    } catch (err) {
+        console.error("Processing failed:", err);
+        throw err;
+    }
+};

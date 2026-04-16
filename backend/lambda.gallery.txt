@@ -1,0 +1,32 @@
+2.GET GALLERY DATA:
+import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
+import { unmarshall } from "@aws-sdk/util-dynamodb";
+
+const ddbClient = new DynamoDBClient({ region: "eu-north-1" });
+
+export const handler = async () => {
+    try {
+        const data = await ddbClient.send(new ScanCommand({
+            TableName: "SmartGalleryMetadata"
+        }));
+
+        // Convert DynamoDB format to standard JSON
+        const items = data.Items.map(item => unmarshall(item));
+
+        return {
+            statusCode: 200,
+            headers: {
+                "Access-Control-Allow-Origin": "*", // Allow any origin
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            },
+            body: JSON.stringify(items),
+        };
+    } catch (err) {
+        return {
+            statusCode: 500,
+            headers: { "Access-Control-Allow-Origin": "*" }, // Still need CORS on error
+            body: JSON.stringify(err)
+        };
+    }
+};
