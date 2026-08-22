@@ -20,7 +20,7 @@ This project follows a **Serverless Event-Driven** pattern:
 - **Backend Runtime**: Node.js 20.x
 
 ## 📸 Demo
-![Project Screenshot](./screenshotvideo.mp4) 
+📹 [Watch the demo video](./screenshotvideo.mp4)
 
 ## 🔑 Key Features
 - **Secure Direct Uploads**: Uses Presigned URLs so the frontend never handles AWS credentials.
